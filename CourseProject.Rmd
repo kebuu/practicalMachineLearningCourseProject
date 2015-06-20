@@ -1,0 +1,97 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Christophe TARDELLA"
+date: "Thursday, June 11, 2015"
+output: html_document
+---
+
+# Objectives
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+The goal of this course project is to build a model to classify perfomances of Unilateral Dumbbell Biceps Curl based on many sensors measures extracted during the exercise.
+
+# Analysis
+
+## Loading and exploring data
+
+Let's first load the data and have a look at it:
+```{r, echo=FALSE}
+set.seed(10)
+setwd("E:/ctardella/MachineLearning/coursera/PracticalMLCourse")
+```
+
+```{r, results="hide"}
+wleTraining <-  read.csv(file = "pml-training.csv")
+wleTesting <-  read.csv(file = "pml-testing.csv")
+str(wleTraining)
+```
+### Feature remove
+
+First, we can see than some features seem to be direclty linked to the experimentation process and should not be used as predictors. So let's remove these *technical* features : 
+
+```{r, results="hide"}
+technicalFeatures <- c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","new_window","num_window")
+tidyWleTraining <- wleTraining[,which(!names(wleTraining) %in% technicalFeatures)]
+```
+
+## Modeling
+
+For all models I will build, I will use k-fold cross validation with k=10. This should be enough (and not to computational intensive) to get a good estimation of the out-of-bag error of the model.
+
+```{r, results="hide"}
+trControl <- trainControl(method = "cv", number=10)
+```
+
+### Decision tree (rpart)
+
+With these technical variables removed we can create our first model. I choose decision tree. I use all remaining variables as predictors. I set the tuneLength parameter to 10 in order to have a good idea of the best model I can get with this algorithm and these predictors.
+
+```{r, results="hide"}
+rpartModel1 <- train(classe ~ ., data=tidyWleTraining, method = "rpart", trControl = trainControl(method = "cv", number=10), tuneLength = 10)
+rpartModel1
+```
+As we can see, the best accuracy we can get is around 0.68 (with the *cp* parameter between 0.01 and 0.02).
+
+This accuracy is far better than what we would have if just try to randomly guess the outcome, which will be 0.2 (because we have five possible classes). However, let's try if we improve our model by feature selection
+
+### feature selection
+
+Let's notice than in the dataset, many columns are almost full of NA or "". It is hard to believe that these columns can be good predictors, so let's remove them and rebuild our previous model with all remaining predictors (we will choose 0.015 for the *cp* value).
+
+```{r, results="hide"}
+uselessFeatures <- uselessFeature <- sapply(tidyWleTraining[1, ], FUN = function(x) {is.na(x) | x == ""})
+tidyWleTraining2 <- tidyWleTraining[,-which(uselessFeatures)]
+
+rpartModel2 <- train(classe ~ ., data=tidyWleTraining2, method = "rpart", trControl = trainControl(method = "cv", number=10), tuneGrid = data.frame(cp = 0.015))
+rpartModel2
+```
+
+Ok. It seems better with these useless features. We can also try to remove correlated features.
+
+```{r, results="hide"}
+correl <- findCorrelation(cor(tidyWleTraining2[,!names(tidyWleTraining2) %in% c("classe")]))
+tidyWleTraining3 <- tidyWleTraining2[,-correl]
+
+rpartModel3 <- train(classe ~ ., data=tidyWleTraining3, method = "rpart", trControl = trainControl(method = "cv", number=10), tuneGrid = data.frame(cp = 0.015))
+rpartModel3
+```
+
+### rf
+
+rfModel1 <- train(classe ~ ., data=tidyWleTraining2, method = "rf", trControl = trainControl(method = "cv", number=10), tuneLength = 10, ntree = 10)
+rfModel1
+
+plot(rfModel1)
+
+rfModel2 <- train(classe ~ ., data=tidyWleTraining3, method = "rf", trControl = trainControl(method = "cv", number=10), tuneLength = 1, ntree = 100, preProcess=c("center", "scale"))
+rfModel2
+
+### PCA
+
+### Estimated error
+predict(rfModel2, )
+
+# Conclusion
+
+What we could have tried next : PCA, scaling centering
