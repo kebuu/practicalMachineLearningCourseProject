@@ -13,31 +13,36 @@ The goal of this course project is to build a model to classify perfomances of U
 
 # Analysis
 
-## Loading and exploring data
+## Loading, splitting and exploring data
 
-Let's first load the data and have a look at it:
+Let's first load the data, create a training and testing set and have a look at it:
 ```{r, echo=FALSE}
 set.seed(10)
 setwd("E:/ctardella/MachineLearning/coursera/PracticalMLCourse")
 ```
 
 ```{r, results="hide"}
-wleTraining <-  read.csv(file = "pml-training.csv")
-wleTesting <-  read.csv(file = "pml-testing.csv")
+wle <-  read.csv(file = "pml-training.csv")
+
+trainPartition <- createDataPartition(y = wle$classe, p=0.8,list = F)
+wleTraining <- wle[trainPartition,]
+wleTesting <- wle[-trainPartition,]
+
 str(wleTraining)
 ```
-### Feature remove
 
-First, we can see than some features seem to be direclty linked to the experimentation process and should not be used as predictors. So let's remove these *technical* features : 
+### Removing technical data
+
+First, we can see that some features seem to be direclty linked to the experimentation process and should not be used as predictors. So let's remove these *technical* features : 
 
 ```{r, results="hide"}
 technicalFeatures <- c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","new_window","num_window")
-tidyWleTraining <- wleTraining[,which(!names(wleTraining) %in% technicalFeatures)]
+tidyWleTraining1 <- wleTraining[,which(!names(wleTraining) %in% technicalFeatures)]
 ```
 
 ## Modeling
 
-For all models I will build, I will use k-fold cross validation with k=10. This should be enough (and not to computational intensive) to get a good estimation of the out-of-bag error of the model.
+For all models I will build, I will use k-fold cross validation with k=10. This should be enough to get a good estimation of the out-of-bag error of the model (and not too computationally intensive).
 
 ```{r, results="hide"}
 trControl <- trainControl(method = "cv", number=10)
@@ -45,53 +50,82 @@ trControl <- trainControl(method = "cv", number=10)
 
 ### Decision tree (rpart)
 
-With these technical variables removed we can create our first model. I choose decision tree. I use all remaining variables as predictors. I set the tuneLength parameter to 10 in order to have a good idea of the best model I can get with this algorithm and these predictors.
+With these technical variables removed we can create our first model. I choose decision tree to start simple. I used all remaining variables as predictors. I set the tuneLength parameter to 10 in order to have a good idea of the best model I can get with this algorithm.
 
 ```{r, results="hide"}
-rpartModel1 <- train(classe ~ ., data=tidyWleTraining, method = "rpart", trControl = trainControl(method = "cv", number=10), tuneLength = 10)
-rpartModel1
+rpartModel <- train(classe ~ ., data=tidyWleTraining1, method = "rpart", trControl = trControl, tuneLength = 10)
+rpartModel
 ```
-As we can see, the best accuracy we can get is around 0.68 (with the *cp* parameter between 0.01 and 0.02).
+As we can see, the best accuracy we can get is around 0.66 (with the *cp* parameter equal to 0).
 
-This accuracy is far better than what we would have if just try to randomly guess the outcome, which will be 0.2 (because we have five possible classes). However, let's try if we improve our model by feature selection
-
-### feature selection
-
-Let's notice than in the dataset, many columns are almost full of NA or "". It is hard to believe that these columns can be good predictors, so let's remove them and rebuild our previous model with all remaining predictors (we will choose 0.015 for the *cp* value).
-
-```{r, results="hide"}
-uselessFeatures <- uselessFeature <- sapply(tidyWleTraining[1, ], FUN = function(x) {is.na(x) | x == ""})
-tidyWleTraining2 <- tidyWleTraining[,-which(uselessFeatures)]
-
-rpartModel2 <- train(classe ~ ., data=tidyWleTraining2, method = "rpart", trControl = trainControl(method = "cv", number=10), tuneGrid = data.frame(cp = 0.015))
-rpartModel2
-```
-
-Ok. It seems better with these useless features. We can also try to remove correlated features.
-
-```{r, results="hide"}
-correl <- findCorrelation(cor(tidyWleTraining2[,!names(tidyWleTraining2) %in% c("classe")]))
-tidyWleTraining3 <- tidyWleTraining2[,-correl]
-
-rpartModel3 <- train(classe ~ ., data=tidyWleTraining3, method = "rpart", trControl = trainControl(method = "cv", number=10), tuneGrid = data.frame(cp = 0.015))
-rpartModel3
-```
+This accuracy is far better than what we would have if we just try to randomly guess the outcome, which will be 0.2 (because we have five possible classes). However, let's try a more complex model to see if we can get a better accuracy.
 
 ### rf
 
-rfModel1 <- train(classe ~ ., data=tidyWleTraining2, method = "rf", trControl = trainControl(method = "cv", number=10), tuneLength = 10, ntree = 10)
+```{r, results="hide"}
+rfModel1 <- train(classe ~ ., data=tidyWleTraining1, method = "rf", trControl = trControl, tuneLength = 10, ntree = 10)
 rfModel1
+```
 
-plot(rfModel1)
+As we can see, the best accuracy we can get is now around 77% with the *mtry* parameter set to 1131.
 
-rfModel2 <- train(classe ~ ., data=tidyWleTraining3, method = "rf", trControl = trainControl(method = "cv", number=10), tuneLength = 1, ntree = 100, preProcess=c("center", "scale"))
+The random forest algorithm seems to get better result than decision tree.
+
+We can now try to improve our model doing some feature selection.
+
+### feature selection
+
+Let's notice that in the dataset, many columns are almost full of NA or "". It is hard to believe that these columns can be good predictors, so let's remove them. and rebuild our previous model with all remaining predictors.
+
+```{r, results="hide"}
+uselessFeatures <- uselessFeature <- sapply(tidyWleTraining1[1, ], FUN = function(x) {is.na(x) | x == ""})
+tidyWleTraining2 <- tidyWleTraining1[,-which(uselessFeatures)]
+```
+
+Besides we can also try to remove correlated features.
+
+```{r, results="hide"}
+correlatedFeatures <- findCorrelation(cor(tidyWleTraining2[,!names(tidyWleTraining2) %in% c("classe")]))
+tidyWleTraining3 <- tidyWleTraining2[,-correlatedFeatures]
+
+rfModel2 <- train(classe ~ ., data=tidyWleTraining3, method = "rf", trControl = trControl, tuneLength = 10, ntree=10)
 rfModel2
+```
 
-### PCA
+Ok it seems far better now : almost 99% of accuracy. One last thing we will do now is to try some higer value for *ntree* parameter to see how it impact our model. We will set the *mtry* parameter to 11 because it seems to be the best value according to the previous model as shown on the following plot.
+
+```{r}
+plot(rfModel2)
+```
+
+```{r}
+rfTuning <- data.frame(mtry=11)
+rfModel3 <- train(classe ~ ., data=tidyWleTraining3, method = "rf", trControl = trControl, tuneGrid = rfTuning, ntree=20)
+rfModel4 <- train(classe ~ ., data=tidyWleTraining3, method = "rf", trControl = trControl, tuneGrid = rfTuning, ntree=50)
+rfModel5 <- train(classe ~ ., data=tidyWleTraining3, method = "rf", trControl = trControl, tuneGrid = rfTuning, ntree=100)
+rfModel6 <- train(classe ~ ., data=tidyWleTraining3, method = "rf", trControl = trControl, tuneGrid = rfTuning, ntree=200)
+
+summary(resamples(list(tree.10=rfModel2, tree.20=rfModel3, tree.50=rfModel4, tree.100=rfModel5, tree.200=rfModel6)))
+```
+
+We can see that after 50 trees, more trees does not increase enough the accuracy to justify the computationnal cost of the model (at least in my opinion). So I consider that the best model is **rfModel5**.
+
+
+### Other possible improvements
+
+I tried to use some other preprocessing techniques (pca, scaling and center) but it was not really better than what I got so far (anyway it is hard to do better than 99%).
 
 ### Estimated error
-predict(rfModel2, )
+
+Now that we have chosen our best model, let's calculate the out of sample error on the test set (as we used cross-validation to tune our model, using a fresh dataset to calculate the out of sample error will give us a better estimate).
+
+```{r}
+prediction <- predict(rfModel5, wleTesting)
+confusionMatrix(prediction, wleTesting$classe)
+```
+
+So we expect an out of sample error of less than 1%.
 
 # Conclusion
 
-What we could have tried next : PCA, scaling centering
+This analysis shows us that it is important to take care of the variables we put into our model because irrelevant or correlated variables may decrease the accuracy of our model. 
