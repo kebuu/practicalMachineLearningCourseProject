@@ -21,7 +21,9 @@ set.seed(10)
 setwd("E:/ctardella/MachineLearning/coursera/PracticalMLCourse")
 ```
 
-```{r, results="hide"}
+```{r, results="hide",warning=FALSE, message=FALSE}
+library(caret)
+
 wle <-  read.csv(file = "pml-training.csv")
 
 trainPartition <- createDataPartition(y = wle$classe, p=0.8,list = F)
@@ -35,14 +37,14 @@ str(wleTraining)
 
 First, we can see that some features seem to be direclty linked to the experimentation process and should not be used as predictors. So let's remove these *technical* features : 
 
-```{r, results="hide"}
+```{r, results="hide",warning=FALSE, message=FALSE}
 technicalFeatures <- c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","new_window","num_window")
 tidyWleTraining1 <- wleTraining[,which(!names(wleTraining) %in% technicalFeatures)]
 ```
 
 ## Modeling
 
-For all models I will build, I will use k-fold cross validation with k=10. This should be enough to get a good estimation of the out-of-bag error of the model (and not too computationally intensive).
+For all models I will build, I will use k-fold cross validation with k=10.
 
 ```{r, results="hide"}
 trControl <- trainControl(method = "cv", number=10)
@@ -52,30 +54,30 @@ trControl <- trainControl(method = "cv", number=10)
 
 With these technical variables removed we can create our first model. I choose decision tree to start simple. I used all remaining variables as predictors. I set the tuneLength parameter to 10 in order to have a good idea of the best model I can get with this algorithm.
 
-```{r, results="hide"}
+```{r}
 rpartModel <- train(classe ~ ., data=tidyWleTraining1, method = "rpart", trControl = trControl, tuneLength = 10)
 rpartModel
 ```
 As we can see, the best accuracy we can get is around 0.66 (with the *cp* parameter equal to 0).
 
-This accuracy is far better than what we would have if we just try to randomly guess the outcome, which will be 0.2 (because we have five possible classes). However, let's try a more complex model to see if we can get a better accuracy.
+This accuracy is far better than what we would have if we just try to randomly guess the outcome (which would be 0.2 because we have five possible classes). However, let's try a more complex model to see if we can get a better accuracy.
 
-### rf
+### Random Forest (rf)
 
-```{r, results="hide"}
+```{r,warning=FALSE, message=FALSE}
 rfModel1 <- train(classe ~ ., data=tidyWleTraining1, method = "rf", trControl = trControl, tuneLength = 10, ntree = 10)
 rfModel1
 ```
 
 As we can see, the best accuracy we can get is now around 77% with the *mtry* parameter set to 1131.
 
-The random forest algorithm seems to get better result than decision tree.
+The random forest algorithm seems to get better results than decision tree.
 
 We can now try to improve our model doing some feature selection.
 
-### feature selection
+### Feature selection
 
-Let's notice that in the dataset, many columns are almost full of NA or "". It is hard to believe that these columns can be good predictors, so let's remove them. and rebuild our previous model with all remaining predictors.
+Let's notice that in the dataset, many columns are almost full of NA or "". It is hard to believe that these columns can be good predictors, so let's remove them and rebuild our previous model with all remaining predictors.
 
 ```{r, results="hide"}
 uselessFeatures <- uselessFeature <- sapply(tidyWleTraining1[1, ], FUN = function(x) {is.na(x) | x == ""})
@@ -84,7 +86,7 @@ tidyWleTraining2 <- tidyWleTraining1[,-which(uselessFeatures)]
 
 Besides we can also try to remove correlated features.
 
-```{r, results="hide"}
+```{r}
 correlatedFeatures <- findCorrelation(cor(tidyWleTraining2[,!names(tidyWleTraining2) %in% c("classe")]))
 tidyWleTraining3 <- tidyWleTraining2[,-correlatedFeatures]
 
@@ -92,11 +94,7 @@ rfModel2 <- train(classe ~ ., data=tidyWleTraining3, method = "rf", trControl = 
 rfModel2
 ```
 
-Ok it seems far better now : almost 99% of accuracy. One last thing we will do now is to try some higer value for *ntree* parameter to see how it impact our model. We will set the *mtry* parameter to 11 because it seems to be the best value according to the previous model as shown on the following plot.
-
-```{r}
-plot(rfModel2)
-```
+Ok it seems far better now : almost 99% of accuracy. One last thing we will do is to try some higher values for the*ntree* parameter to see how it impact our model. We will set the *mtry* parameter to 11 because it seems to be the best value according to the previous model.
 
 ```{r}
 rfTuning <- data.frame(mtry=11)
@@ -108,8 +106,7 @@ rfModel6 <- train(classe ~ ., data=tidyWleTraining3, method = "rf", trControl = 
 summary(resamples(list(tree.10=rfModel2, tree.20=rfModel3, tree.50=rfModel4, tree.100=rfModel5, tree.200=rfModel6)))
 ```
 
-We can see that after 50 trees, more trees does not increase enough the accuracy to justify the computationnal cost of the model (at least in my opinion). So I consider that the best model is **rfModel5**.
-
+We can see that after 50 trees, more trees does not increase enough the accuracy to justify the computationnal cost of the model (at least in my opinion). So I consider that the best model is **rfModel5** (tree.50).
 
 ### Other possible improvements
 
@@ -124,7 +121,7 @@ prediction <- predict(rfModel5, wleTesting)
 confusionMatrix(prediction, wleTesting$classe)
 ```
 
-So we expect an out of sample error of less than 1%.
+So we expect an out of sample error of less than 1% (accuracy = 0.9964).
 
 # Conclusion
 
